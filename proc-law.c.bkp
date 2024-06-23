@@ -90,6 +90,7 @@ found:
   p->pid = nextpid++;
 
   release(&ptable.lock);
+  p->ctime = ticks;
 
   // Allocate kernel stack.
   if((p->kstack = kalloc()) == 0){
@@ -112,6 +113,7 @@ found:
   memset(p->context, 0, sizeof *p->context);
   p->context->eip = (uint)forkret;
 
+
   return p;
 }
 
@@ -130,6 +132,7 @@ userinit(void)
     panic("userinit: out of memory?");
   inituvm(p->pgdir, _binary_initcode_start, (int)_binary_initcode_size);
   p->sz = PGSIZE;
+  p->ctime = ticks;
   memset(p->tf, 0, sizeof(*p->tf));
   p->tf->cs = (SEG_UCODE << 3) | DPL_USER;
   p->tf->ds = (SEG_UDATA << 3) | DPL_USER;
@@ -332,18 +335,23 @@ scheduler(void)
 
     // Loop over process table looking for process to run.
     acquire(&ptable.lock);
-    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-      if(p->state != RUNNABLE)
-        continue;
+    struct proc *minP = 0;
 
+    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
+        if(p->state != RUNNABLE) continue;
+        if(p->pid <= 1) continue;
+        if(minP == 0) minP = p;
+        else if(p->ctime < minP->ctime) minP = p;
+    }
+    if (minP) {
       // Switch to chosen process.  It is the process's job
       // to release ptable.lock and then reacquire it
       // before jumping back to us.
-      c->proc = p;
-      switchuvm(p);
+      c->proc = minP;
+      switchuvm(minP);
       p->state = RUNNING;
 
-      swtch(&(c->scheduler), p->context);
+      swtch(&(c->scheduler), minP->context);
       switchkvm();
 
       // Process is done running for now.
@@ -351,7 +359,6 @@ scheduler(void)
       c->proc = 0;
     }
     release(&ptable.lock);
-
   }
 }
 
