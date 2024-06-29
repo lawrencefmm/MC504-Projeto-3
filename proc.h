@@ -49,8 +49,12 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
-  int priority;                // Process priority
+  int burst_time;                // Process priority
 };
+
+enum scheduler_type {RR, SJF};
+extern enum scheduler_type current_scheduler;
+extern int scheduler_counter;
 
 // Process memory is laid out contiguously, low addresses first:
 //   text

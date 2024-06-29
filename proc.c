@@ -14,6 +14,9 @@ struct {
 
 static struct proc *initproc;
 
+enum scheduler_type current_scheduler = RR;
+int scheduler_counter = 0;
+
 int nextpid = 1;
 extern void forkret(void);
 extern void trapret(void);
@@ -88,7 +91,7 @@ allocproc(void)
 found:
   p->state = EMBRYO;
   p->pid = nextpid++;
-  p->priority = 100;
+  p->burst_time = 0;
 
   release(&ptable.lock);
 
@@ -320,48 +323,70 @@ wait(void)
 //  - swtch to start running that process
 //  - eventually that process transfers control
 //      via swtch back to the scheduler.
-void
-scheduler(void)
-{
-  struct proc *p, *maxP, *paux;
+void scheduler(void) {
+  struct proc *p;
   struct cpu *c = mycpu();
   c->proc = 0;
-  
-  for(;;){
+
+  for(;;) {
     // Enable interrupts on this processor.
     sti();
 
-    // Loop over process table looking for process to run.
     acquire(&ptable.lock);
-    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-      maxP = p;
-      for (paux = ptable.proc; paux < &ptable.proc[NPROC]; paux++) {
-        if(paux->state != RUNNABLE) continue;
-        if(!maxP) maxP = paux;
-        else if(maxP->priority < paux->priority) maxP = paux;
+
+    // Alternate scheduler every 10 ticks
+    if (scheduler_counter++ % 10 == 0) {
+      current_scheduler = (current_scheduler == RR) ? SJF : RR;
+    }
+
+    if (current_scheduler == RR) {
+      // Original RR scheduling
+      for(p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
+        if(p->state != RUNNABLE)
+          continue;
+
+        // Switch to chosen process. It is the process's job
+        // to release ptable.lock and then reacquire it
+        // before jumping back to us.
+        c->proc = p;
+        switchuvm(p);
+        p->state = RUNNING;
+
+        swtch(&(c->scheduler), p->context);
+        switchkvm();
+
+        // Process is done running for now.
+        // It should have changed its p->state before coming back.
+        c->proc = 0;
+      }
+    } else if (current_scheduler == SJF) {
+      // SJF scheduling
+      struct proc *shortest_job = 0;
+      for(p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
+        if(p->state == RUNNABLE) {
+          if (shortest_job == 0 || p->burst_time < shortest_job->burst_time) {
+            shortest_job = p;
+          }
+        }
       }
 
-      // Switch to chosen process.  It is the process's job
-      // to release ptable.lock and then reacquire it
-      // before jumping back to us.
+      if (shortest_job) {
+        p = shortest_job;
+        c->proc = p;
+        switchuvm(p);
+        p->state = RUNNING;
 
-      p = maxP;
-      if(p->state != RUNNABLE) continue;
-      c->proc = p;
-      switchuvm(p);
-      p->state = RUNNING;
+        swtch(&(c->scheduler), p->context);
+        switchkvm();
 
-      swtch(&(c->scheduler), p->context);
-      switchkvm();
-
-      // Process is done running for now.
-      // It should have changed its p->state before coming back.
-      c->proc = 0;
+        c->proc = 0;
+      }
     }
+    
     release(&ptable.lock);
-
   }
 }
+
 
 // Enter scheduler.  Must hold only ptable.lock
 // and have changed proc->state. Saves and restores
@@ -395,6 +420,7 @@ yield(void)
 {
   acquire(&ptable.lock);  //DOC: yieldlock
   myproc()->state = RUNNABLE;
+  myproc()->burst_time++;
   sched();
   release(&ptable.lock);
 }
@@ -549,39 +575,40 @@ ps()
   sti();
 
   acquire(&ptable.lock);
-  cprintf("Name \t | PID \t | State \t | Priority \n");
+  cprintf("Name \t | PID \t | State \t | Burst_time \n");
 
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
+    if(p->name[0] == '\0') continue;
     switch(p->state){
       case UNUSED:
-        cprintf("%s \t | %d \t | UNUSED \t | %d \n", p->name, p->pid, p->priority);
+        cprintf("%s \t | %d \t | UNUSED \t | %d \n", p->name, p->pid, p->burst_time);
       case EMBRYO:
-        cprintf("%s \t | %d \t | EMBRYO \t | %d \n", p->name, p->pid, p->priority);
+        cprintf("%s \t | %d \t | EMBRYO \t | %d \n", p->name, p->pid, p->burst_time);
       case SLEEPING:
-        cprintf("%s \t | %d \t | SLEEPING \t | %d \n", p->name, p->pid, p->priority);
+        cprintf("%s \t | %d \t | SLEEPING \t | %d \n", p->name, p->pid, p->burst_time);
       case RUNNABLE:
-        cprintf("%s \t | %d \t | RUNNABLE \t | %d \n", p->name, p->pid, p->priority);
+        cprintf("%s \t | %d \t | RUNNABLE \t | %d \n", p->name, p->pid, p->burst_time);
       case RUNNING:
-        cprintf("%s \t | %d \t | RUNNING \t | %d \n", p->name, p->pid, p->priority);
+        cprintf("%s \t | %d \t | RUNNING \t | %d \n", p->name, p->pid, p->burst_time);
       case ZOMBIE:
-        cprintf("%s \t | %d \t | ZOMBIE \t | %d \n", p->name, p->pid, p->priority);
+        cprintf("%s \t | %d \t | ZOMBIE \t | %d \n", p->name, p->pid, p->burst_time);
     }
   }
   release(&ptable.lock);
   return 0;
 }
 
-int
-chnpr(int pid, int priority)
-{
-  struct proc *p;
-  acquire(&ptable.lock);
-  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
-    if(p->pid == pid) {
-      p->priority = priority;
-      break;
-    }
-  }
-  release(&ptable.lock);
-  return pid;
-}
+// int
+// chnpr(int pid, int priority)
+// {
+//   struct proc *p;
+//   acquire(&ptable.lock);
+//   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
+//     if(p->pid == pid) {
+//       p->priority = priority;
+//       break;
+//     }
+//   }
+//   release(&ptable.lock);
+//   return pid;
+// }

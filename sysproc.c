@@ -95,10 +95,3 @@ int sys_ps(void) {
   return ps();
 }
 
-int sys_chnpr(void) {
-  int pid, priority;
-  if(argint(0, &pid) < 0) return -1;
-  if(argint(0, &priority) < 0) return -1;
-
-  return chnpr(pid, priority);
-}
