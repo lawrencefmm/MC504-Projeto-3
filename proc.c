@@ -354,7 +354,8 @@ void scheduler(void) {
 
         swtch(&(c->scheduler), p->context);
         switchkvm();
-
+        if(p->name[0] == 't')
+          cprintf("pid %d : burst_time: %d\n",p->pid, p->burst_time);
         // Process is done running for now.
         // It should have changed its p->state before coming back.
         c->proc = 0;
@@ -378,7 +379,8 @@ void scheduler(void) {
 
         swtch(&(c->scheduler), p->context);
         switchkvm();
-
+        if(p->name[0] == 'n')
+          cprintf("pid %d : burst_time: %d\n",p->pid, p->burst_time);
         c->proc = 0;
       }
     }
@@ -597,6 +599,13 @@ ps()
   release(&ptable.lock);
   return 0;
 }
+
+// int getbursttime(int pid) {
+//   struct proc *p;
+//   sti();
+//   acquire(&ptable.lock);
+
+// }
 
 // int
 // chnpr(int pid, int priority)

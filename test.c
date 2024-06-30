@@ -56,12 +56,11 @@ void itoa(int num, char *str, int base) {
 }
 
 int main(int argc, char * argv[]) {
-	int n = 150;
+	int n = 100;
   int pid;
   pid = 0;
 
 
-  int x = 0;
   for (int i = 0; i < n; i++) {
     pid = fork();
     if (pid == -1) {
@@ -70,11 +69,9 @@ int main(int argc, char * argv[]) {
       // printf(1, "Parent %d creating child %d\n",getpid(), pid);
       wait();
     } else {
-      printf(1, "Child %d created\n", getpid());
-      x = 0;
+      // printf(1, "Child %d created\n", getpid());
       int t;
-      t = uptime();
-      int i, j;
+      t = 0;
       long long sum = 0;
       int n = 1000000;
       for(int j = 1; j <= n; j++) {
@@ -97,14 +94,14 @@ int main(int argc, char * argv[]) {
 
       char data[30];
       itoa(t, data, 10);
-      int n = write(fd, data, strlen(data));
+      int w = write(fd, data, strlen(data));
 
       // Close the file
-      if(n < 0)
+      if(w < 0)
         close(fd); 
       else close(fd);
 
-      printf(1, "Child %d ticks: %d\n", getpid(), t);
+      // printf(1, "Child %d ticks: %d\n", getpid(), t);
       break;
     }
   }
